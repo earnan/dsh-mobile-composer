@@ -42,6 +42,23 @@ bundles:
   - '@dsh-external/dsh-mobile-composer'
 ```
 
+### 从 GitHub 安装
+
+仓库已包含构建产物 `lib/client.js`，可直接从 GitHub 安装，无需本地 build：
+
+```bash
+# 进入 DSH 的 web profile
+cd ~/.dsh/profiles/web
+npm install github:earnan/dsh-mobile-composer
+# 若 peerDependencies 版本校验报错，加 --legacy-peer-deps
+```
+
+安装后在 profile 的 `package.json` 注册（与上方 bundles 二选一依赖注入）：
+- `dependencies` 增加 `"@dsh-external/dsh-mobile-composer": "github:earnan/dsh-mobile-composer"`
+- `dsh.profile.bundles` 增加 `"@dsh-external/dsh-mobile-composer"`
+
+重启 web 进程，boot manifest 的 `rev` 自动刷新即可生效。
+
 ## 构建
 
 ```bash
