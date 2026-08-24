@@ -1,0 +1,5 @@
+# dsh-mobile-composer bundle patch: one client-only plugin row.
+# 主机侧是空 apply，浏览器半边通过 package.json 的 dsh.client 声明被发现。
+- insert:
+    - id: dsh-mobile-composer
+      name: '@dsh-external/dsh-mobile-composer'
