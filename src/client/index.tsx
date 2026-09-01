@@ -1,5 +1,5 @@
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
-import type { DraftAttachmentId, IConversation } from '@deepseek-ai/dsh-client-ui-conversation/client'
+import type { DraftAttachmentId, IConversation, ComposerAttachment } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { UploadButton } from './UploadButton.tsx'
 import { SteerButton } from './SteerButton.tsx'
 import { installEnterNewline } from './enter-newline.ts'
@@ -18,7 +18,7 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
  * 但运行时实例（ConversationController）存在该方法。类型在此补全。
  */
 interface ConversationRuntime extends IConversation {
-  createDraftImages(files: readonly File[]): readonly { id: DraftAttachmentId }[]
+  createDraftImages(files: readonly File[]): readonly ComposerAttachment[]
 }
 
 /** sessions 服务最小面：按 id 取 session 作用域 ctx。 */
@@ -27,10 +27,9 @@ interface SessionsFace {
 }
 
 /** 必需注入的服务。 */
-export const inject = ['slots', 'locale']
+export const inject = ['slots', 'locale'] as const
 
-const MOBILE_CSS = `
-[data-mobile-composer='upload'],
+const MOBILE_CSS = `[data-mobile-composer='upload'],
 [data-mobile-composer='steer'] {
   display: inline-flex;
   align-items: center;
@@ -104,19 +103,13 @@ export function apply(ctx: ClientContext): void {
     id: 'mobile-composer-steer',
     order: 0,
     locale: NS,
-    inject: (sessionId: string) => ({
+    inject: (actx) => ({
       steer: () => {
-        if (conversation === undefined || sessions === undefined) return
-        const actx = sessions.scope(sessionId)
-        if (actx === undefined) return
-        conversation.input.for(actx).submit('steer')
+        conversation?.input.for(actx).submit('steer')
       },
     }),
   }, SteerButton))
 
-  ctx.effect(() => installEnterNewline(), 'dsh-mobile-composer: enter newline')
-  ctx.effect(() => installFloatDrag(), 'dsh-mobile-composer: float drag')
+  ctx.effect(() => installEnterNewline(), 'dsh-mobile-composer: enter-newline')
+  ctx.effect(() => installFloatDrag(), 'dsh-mobile-composer: float-drag')
 }
-
-import type {} from '@deepseek-ai/dsh-client-ui-conversation/client'
-import type {} from '@deepseek-ai/dsh-client-locale/client'
