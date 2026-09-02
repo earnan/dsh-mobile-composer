@@ -92,3 +92,14 @@ src/
     ├── log-bus.ts      # 日志事件总线
     └── log-panel.ts    # 浮动日志面板
 ```
+
+## ⚠️ 升级兼容性注意
+
+DSH（harness）是 monorepo，`@deepseek-ai/*` 包由本地源码构建，**每次升级 API 可能变化**。本插件依赖的 `conversation.createDraftImages`、`ctx.inject` 服务注入等契约，一旦 DSH 升级后发生漂移，可能导致功能静默失效（图片选了 0 张无报错）。
+
+升级 DSH 后**必须**重新验证：
+1. `createDraftImages` 是否仍存在且返回 `ComposerAttachment[]`；
+2. `conversation` 服务经 `ctx.inject` 获取是否 READY（用浮动日志面板看 apply 日志）；
+3. `inputActions.addImages` 签名是否仍兼容。
+
+排查时用内置浮动日志面板（右下角「调试日志」按钮），能直接看到 `createImages` 每一步的状态，定位是服务未就绪、API 变化还是文件类型问题。
