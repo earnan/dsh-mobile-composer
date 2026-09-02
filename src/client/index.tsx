@@ -137,5 +137,10 @@ export function apply(ctx: ClientContext): void {
 
   ctx.effect(() => installEnterNewline(), 'dsh-mobile-composer: enter-newline')
   ctx.effect(() => installFloatDrag(), 'dsh-mobile-composer: float-drag')
-  ctx.effect(() => installLogPanel(), 'dsh-mobile-composer: log-panel')
+
+  // 浮动日志面板默认关闭：图片上传已修复，平时不再悬浮遮挡界面。
+  // 仅当 URL 带 ?debug=1 时启用（如 http://host:port/?debug=1）。
+  if (new URLSearchParams(window.location.search).has('debug')) {
+    ctx.effect(() => installLogPanel(), 'dsh-mobile-composer: log-panel')
+  }
 }
