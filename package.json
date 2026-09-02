@@ -45,7 +45,8 @@
     "@deepseek-ai/dsh-client-runtime": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-client-ui-conversation": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-client-ui-slots": "^0.1.0-rc.6",
-    "react": "^18.2.0"
+    "react": "^18.2.0",
+    "@deepseek-ai/dsh-client-ui-settings": "^0.1.0-rc.6"
   },
   "devDependencies": {
     "@types/react": "^19.2.18",

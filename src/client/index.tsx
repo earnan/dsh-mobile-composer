@@ -1,13 +1,21 @@
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
 import type { DraftAttachmentId, IConversation, ComposerAttachment } from '@deepseek-ai/dsh-client-ui-conversation/client'
+// 拉入 ctx.settingsScope / ctx.locale 的 type augmentation（side-effect type import）
+import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
+import type {} from '@deepseek-ai/dsh-client-locale/client'
 import { UploadButton } from './UploadButton.tsx'
 import { SteerButton } from './SteerButton.tsx'
+import { DebugLogSetting } from './DebugLogSetting.tsx'
 import { installEnterNewline } from './enter-newline.ts'
 import { installFloatDrag } from './float-drag.ts'
 import { installLogPanel } from './log-panel.ts'
 import { log } from './log-bus.ts'
 import { NS, zh, en } from './locales.ts'
 import type { MobileRemoteKey } from './locales.ts'
+import {
+  MOBILE_COMPOSER_SETTINGS_NAMESPACE,
+  type MobileComposerSettings,
+} from './settings-meta.ts'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -28,7 +36,7 @@ interface SessionsFace {
   scope(id: string): ClientContext | undefined
 }
 
-/** 必需注入的服务。 */
+/** 必需注入的服务。settingsScope 用可选 ctx.inject，避免 ui-settings 缺失时拖垮插件。 */
 export const inject = ['slots', 'locale', 'conversation', 'sessions'] as const
 
 const MOBILE_CSS = `[data-mobile-composer='upload'],
@@ -68,11 +76,12 @@ const MOBILE_CSS = `[data-mobile-composer='upload'],
 `
 
 /**
- * dsh-mobile-composer，浏览器半：移动端增强四件套。
+ * dsh-mobile-composer，浏览器半：移动端增强 + 设置开关。
  * - 传图按钮（conversation.input.left）
  * - 插话发送按钮（conversation.input.right）
  * - 回车=换行（document 捕获拦截）
  * - 退出按钮拖动（DOM 注入）
+ * - 「调试日志」设置开关（settings.general.item）
  * @param ctx - 客户端根上下文。
  */
 export function apply(ctx: ClientContext): void {
@@ -129,7 +138,9 @@ export function apply(ctx: ClientContext): void {
       locale: NS,
       inject: (actx) => ({
         steer: () => {
-          scope.get('conversation')?.input.for(actx).submit('steer')
+          // actx 由 slot inject 提供，类型推断为 SessionId；input.for 需 ClientContext（历史遗留，运行时正常）。
+          const conv = scope.get('conversation')
+          void conv?.input.for(actx as unknown as ClientContext).submit('steer')
         },
       }),
     }, SteerButton))
@@ -138,9 +149,42 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => installEnterNewline(), 'dsh-mobile-composer: enter-newline')
   ctx.effect(() => installFloatDrag(), 'dsh-mobile-composer: float-drag')
 
-  // 浮动日志面板默认关闭：图片上传已修复，平时不再悬浮遮挡界面。
-  // 仅当 URL 带 ?debug=1 时启用（如 http://host:port/?debug=1）。
+  // 浮动日志面板：URL ?debug=1 强制启用（兜底）。
   if (new URLSearchParams(window.location.search).has('debug')) {
-    ctx.effect(() => installLogPanel(), 'dsh-mobile-composer: log-panel')
+    ctx.effect(() => installLogPanel(), 'dsh-mobile-composer: log-panel(force)')
   }
+
+  // 设置开关（可选依赖：settingsScope 缺失则仅跳过设置行 + 动态日志面板）。
+  ctx.inject(['settingsScope'], (scope: ClientContext) => {
+    const host = ctx.settingsScope.bind<MobileComposerSettings>({
+      namespace: MOBILE_COMPOSER_SETTINGS_NAMESPACE,
+    })
+
+    // 订阅 debugLog，动态装/卸浮动日志面板。
+    ctx.effect(() => {
+      let disposePanel: (() => void) | undefined
+      let unsub: (() => void) | undefined
+      const sync = () => {
+        const snap = host.getSnapshot()
+        const on = snap.value?.debugLog === true
+        if (on && !disposePanel) disposePanel = installLogPanel()
+        else if (!on && disposePanel) { disposePanel(); disposePanel = undefined }
+      };
+      unsub = host.subscribe(sync)
+      sync()
+      return () => { unsub?.(); if (disposePanel) disposePanel() }
+    }, 'dsh-mobile-composer: log-panel(settings)')
+
+    // 设置行：DebugLog 开关。
+    scope.slots.inject('settings.general.item', () => scope.slots.register({
+      name: 'settings.general.item',
+      id: 'mobile-composer-debuglog',
+      order: 0,
+      locale: NS,
+      inject: () => ({
+        debugLog: host.getSnapshot().value?.debugLog === true,
+        onToggle: (v: boolean) => { void host.set('debugLog', v) },
+      }),
+    }, DebugLogSetting))
+  })
 }
