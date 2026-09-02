@@ -2,6 +2,7 @@ import { useRef, useCallback } from 'react'
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { DraftAttachmentId, ComposerAttachment } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { NS } from './locales.ts'
+import { log } from './log-bus.ts'
 
 /** 由 apply 注入：把浏览器 File 转成会话草稿图（conversation.createDraftImages）。 */
 export interface UploadInjected {
@@ -16,8 +17,8 @@ export type UploadButtonProps =
 /**
  * 「上传图片」按钮，挂在 conversation.input.left 槽位（工具行「+」号旁）。
  * 复用公开面 inputActions.addImages 走图片入列流程，移动端与桌面端均可用。
- * 
- * 改进版本：解决移动端图片上传兼容性问题
+ *
+ * 改进版本：解决移动端图片上传兼容性问题，使用浮动日志面板调试。
  */
 export function UploadButton({ inputActions, createImages, t }: UploadButtonProps) {
   const fileRef = useRef<HTMLInputElement | null>(null)
@@ -26,39 +27,41 @@ export function UploadButton({ inputActions, createImages, t }: UploadButtonProp
     try {
       const input = fileRef.current
       if (input === null) {
-        console.warn('dsh-mobile-composer: 文件输入元素不存在')
+        log('warn', '文件输入元素不存在')
         return
       }
-      
+
       const files = Array.from(input.files ?? [])
       if (files.length === 0) {
-        console.warn('dsh-mobile-composer: 没有选择文件')
+        log('warn', '没有选择文件')
         return
       }
-      
-      console.log('dsh-mobile-composer: 选择文件', files.length, '个')
-      
+
+      log('info', '选择文件', files.length, '个')
+      files.forEach((f, i) => log('info', '  文件[' + i + ']:', f.type, f.name, f.size + ' bytes'))
+
       // 验证文件类型，确保是图片
       const imageFiles = files.filter(f => f.type.startsWith('image/'))
       if (imageFiles.length === 0) {
-        console.warn('dsh-mobile-composer: 没有选择有效的图片文件')
+        log('warn', '没有选择有效的图片文件')
         return
       }
-      
-      console.log('dsh-mobile-composer: 有效图片文件', imageFiles.length, '个')
-      
+
+      log('info', '有效图片文件', imageFiles.length, '个')
+
       const images = createImages(imageFiles)
-      console.log('dsh-mobile-composer: 创建图片', images.length, '个')
-      
+      log('info', '创建图片', images.length, '个')
       if (images.length > 0) {
         const ids = images.map(image => image.id)
-        console.log('dsh-mobile-composer: 添加图片ID', ids)
+        log('info', '添加图片ID', ids as unknown as string[])
         inputActions.addImages(ids)
+        log('info', '图片已添加到输入框')
+      } else {
+        log('warn', 'createImages 返回空数组')
       }
     } catch (error) {
-      console.error('dsh-mobile-composer: 图片上传失败', error)
+      log('error', '图片上传失败:', error)
     } finally {
-      // 重置input，确保下次选择同一文件也能触发change事件
       if (fileRef.current) {
         fileRef.current.value = ''
       }
@@ -68,7 +71,6 @@ export function UploadButton({ inputActions, createImages, t }: UploadButtonProp
   const onClick = useCallback((): void => {
     const input = fileRef.current
     if (input) {
-      // 重置input值，确保change事件能正确触发
       input.value = ''
       input.click()
     }

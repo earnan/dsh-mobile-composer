@@ -4,6 +4,8 @@ import { UploadButton } from './UploadButton.tsx'
 import { SteerButton } from './SteerButton.tsx'
 import { installEnterNewline } from './enter-newline.ts'
 import { installFloatDrag } from './float-drag.ts'
+import { installLogPanel } from './log-panel.ts'
+import { log } from './log-bus.ts'
 import { NS, zh, en } from './locales.ts'
 import type { MobileRemoteKey } from './locales.ts'
 
@@ -27,7 +29,7 @@ interface SessionsFace {
 }
 
 /** 必需注入的服务。 */
-export const inject = ['slots', 'locale'] as const
+export const inject = ['slots', 'locale', 'conversation', 'sessions'] as const
 
 const MOBILE_CSS = `[data-mobile-composer='upload'],
 [data-mobile-composer='steer'] {
@@ -84,32 +86,56 @@ export function apply(ctx: ClientContext): void {
     return () => { tag.remove() }
   }, 'dsh-mobile-composer: styles')
 
-  const conversation = ctx.get('conversation') as ConversationRuntime | undefined
-  const sessions = ctx.get('sessions') as SessionsFace | undefined
+  // 用 ctx.inject 确保 conversation/sessions 服务就绪后再注册槽位，
+  // 否则 apply 时 get('conversation') 可能返回 undefined。
+  ctx.inject(['conversation', 'sessions'], (scope: ClientContext) => {
+    const conversation = scope.get('conversation') as ConversationRuntime | undefined
+    log('info', 'apply: conversation =', conversation ? 'READY' : 'MISSING')
+    log('info', 'apply: createDraftImages =', conversation && typeof conversation.createDraftImages === 'function' ? 'READY' : 'MISSING')
 
-  ctx.slots.inject('conversation.input.left', () => ctx.slots.register({
-    name: 'conversation.input.left',
-    id: 'mobile-composer-upload',
-    order: 0,
-    locale: NS,
-    inject: () => ({
-      createImages: (files: readonly File[]) =>
-        conversation?.createDraftImages(files) ?? [],
-    }),
-  }, UploadButton))
+    scope.slots.inject('conversation.input.left', () => scope.slots.register({
+      name: 'conversation.input.left',
+      id: 'mobile-composer-upload',
+      order: 0,
+      locale: NS,
+      inject: () => ({
+        createImages: (files: readonly File[]) => {
+          const conv = scope.get('conversation') as ConversationRuntime | undefined
+          log('info', 'createImages: conversation =', conv ? 'READY' : 'MISSING')
+          if (!conv) {
+            log('error', 'createImages: conversation 未找到')
+            return []
+          }
+          if (typeof conv.createDraftImages !== 'function') {
+            log('error', 'createImages: createDraftImages 不可用')
+            return []
+          }
+          try {
+            const result = conv.createDraftImages(files)
+            log('info', 'createImages: createDraftImages 返回', result.length, '个')
+            return result
+          } catch (e) {
+            log('error', 'createImages: createDraftImages 异常:', e)
+            return []
+          }
+        },
+      }),
+    }, UploadButton))
 
-  ctx.slots.inject('conversation.input.right', () => ctx.slots.register({
-    name: 'conversation.input.right',
-    id: 'mobile-composer-steer',
-    order: 0,
-    locale: NS,
-    inject: (actx) => ({
-      steer: () => {
-        conversation?.input.for(actx).submit('steer')
-      },
-    }),
-  }, SteerButton))
+    scope.slots.inject('conversation.input.right', () => scope.slots.register({
+      name: 'conversation.input.right',
+      id: 'mobile-composer-steer',
+      order: 0,
+      locale: NS,
+      inject: (actx) => ({
+        steer: () => {
+          scope.get('conversation')?.input.for(actx).submit('steer')
+        },
+      }),
+    }, SteerButton))
+  })
 
   ctx.effect(() => installEnterNewline(), 'dsh-mobile-composer: enter-newline')
   ctx.effect(() => installFloatDrag(), 'dsh-mobile-composer: float-drag')
+  ctx.effect(() => installLogPanel(), 'dsh-mobile-composer: log-panel')
 }

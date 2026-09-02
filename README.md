@@ -12,8 +12,9 @@ DSH（DeepSeek Harness）移动端 UI 增强插件：让手机通过公网/局�
 | 运行中插话发送 | `conversation.input.right` 槽位注入按钮，走 `conversation.input.for(ctx).submit('steer')` |
 | 回车=换行 | document 捕获阶段拦截 keydown，窄屏下 Enter 只换行 |
 | 退出按钮拖动 | DOM 注入 pointer 拖拽 + localStorage 位置记忆 |
+| 浮动调试日志 | DOM 注入悬浮面板（log-bus + log-panel），手机端直接看运行时日志 |
 
-四项均在 ≤1023px（移动端）生效，桌面端行为不变。
+前四项均在 ≤1023px（移动端）生效，桌面端行为不变；浮动调试日志全端生效（仅移动调试用）。
 
 ## 架构依据
 
@@ -87,5 +88,7 @@ src/
     ├── UploadButton.tsx# 传图按钮
     ├── SteerButton.tsx # 插话发送按钮
     ├── enter-newline.ts# 回车换行
-    └── float-drag.ts   # 退出按钮拖动
+    ├── float-drag.ts   # 退出按钮拖动
+    ├── log-bus.ts      # 日志事件总线
+    └── log-panel.ts    # 浮动日志面板
 ```
