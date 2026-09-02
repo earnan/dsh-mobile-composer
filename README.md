@@ -12,9 +12,9 @@ DSH（DeepSeek Harness）移动端 UI 增强插件：让手机通过公网/局�
 | 运行中插话发送 | `conversation.input.right` 槽位注入按钮，走 `conversation.input.for(ctx).submit('steer')` |
 | 回车=换行 | document 捕获阶段拦截 keydown，窄屏下 Enter 只换行 |
 | 退出按钮拖动 | DOM 注入 pointer 拖拽 + localStorage 位置记忆 |
-| 浮动调试日志 | DOM 注入悬浮面板（log-bus + log-panel），手机端直接看运行时日志 |
+| 浮动调试日志 | DOM 注入悬浮面板（log-bus + log-panel），**默认关闭**，仅 `?debug=1` 时启用 |
 
-前四项均在 ≤1023px（移动端）生效，桌面端行为不变；浮动调试日志全端生效（仅移动调试用）。
+前四项均在 ≤1023px（移动端）生效，桌面端行为不变；浮动调试日志全端生效、**默认关闭**（仅移动调试用，访问 `?debug=1` 才显示）。
 
 ## 架构依据
 
@@ -99,7 +99,7 @@ DSH（harness）是 monorepo，`@deepseek-ai/*` 包由本地源码构建，**每
 
 升级 DSH 后**必须**重新验证：
 1. `createDraftImages` 是否仍存在且返回 `ComposerAttachment[]`；
-2. `conversation` 服务经 `ctx.inject` 获取是否 READY（用浮动日志面板看 apply 日志）；
+2. `conversation` 服务经 `ctx.inject` 获取是否 READY（用浮动日志面板看 apply 日志，访问 `?debug=1` 唤出）；
 3. `inputActions.addImages` 签名是否仍兼容。
 
-排查时用内置浮动日志面板（右下角「调试日志」按钮），能直接看到 `createImages` 每一步的状态，定位是服务未就绪、API 变化还是文件类型问题。
+排查时在 URL 加 `?debug=1` 唤出内置浮动日志面板（右下角「调试日志」），能直接看到 `createImages` 每一步的状态，定位是服务未就绪、API 变化还是文件类型问题。调试完毕去掉参数即恢复常规界面。
