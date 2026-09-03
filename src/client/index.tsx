@@ -37,7 +37,7 @@ interface SessionsFace {
 }
 
 /** 必需注入的服务。settingsScope 用可选 ctx.inject，避免 ui-settings 缺失时拖垮插件。 */
-export const inject = ['slots', 'locale', 'conversation', 'sessions'] as const
+export const inject = ['slots', 'locale', 'conversation', 'sessions', 'remote', 'settingsScope'] as const
 
 const MOBILE_CSS = `[data-mobile-composer='upload'],
 [data-mobile-composer='steer'] {
@@ -154,37 +154,35 @@ export function apply(ctx: ClientContext): void {
     ctx.effect(() => installLogPanel(), 'dsh-mobile-composer: log-panel(force)')
   }
 
-  // 设置开关（可选依赖：settingsScope 缺失则仅跳过设置行 + 动态日志面板）。
-  ctx.inject(['settingsScope'], (scope: ClientContext) => {
-    const host = ctx.settingsScope.bind<MobileComposerSettings>({
-      namespace: MOBILE_COMPOSER_SETTINGS_NAMESPACE,
-    })
-
-    // 订阅 debugLog，动态装/卸浮动日志面板。
-    ctx.effect(() => {
-      let disposePanel: (() => void) | undefined
-      let unsub: (() => void) | undefined
-      const sync = () => {
-        const snap = host.getSnapshot()
-        const on = snap.value?.debugLog === true
-        if (on && !disposePanel) disposePanel = installLogPanel()
-        else if (!on && disposePanel) { disposePanel(); disposePanel = undefined }
-      };
-      unsub = host.subscribe(sync)
-      sync()
-      return () => { unsub?.(); if (disposePanel) disposePanel() }
-    }, 'dsh-mobile-composer: log-panel(settings)')
-
-    // 设置行：DebugLog 开关。
-    scope.slots.inject('settings.general.item', () => scope.slots.register({
-      name: 'settings.general.item',
-      id: 'mobile-composer-debuglog',
-      order: 0,
-      locale: NS,
-      inject: () => ({
-        debugLog: host.getSnapshot().value?.debugLog === true,
-        onToggle: (v: boolean) => { void host.set('debugLog', v) },
-      }),
-    }, DebugLogSetting))
+  // 设置开关（与官方 locale 一致：inject 顶层含 settingsScope，apply 顶层绑定）。
+  const host = ctx.settingsScope.bind<MobileComposerSettings>({
+    namespace: MOBILE_COMPOSER_SETTINGS_NAMESPACE,
   })
+
+  // 订阅 debugLog，动态装/卸浮动日志面板。
+  ctx.effect(() => {
+    let disposePanel: (() => void) | undefined
+    let unsub: (() => void) | undefined
+    const sync = () => {
+      const snap = host.getSnapshot()
+      const on = snap.value?.debugLog === true
+      if (on && !disposePanel) disposePanel = installLogPanel()
+      else if (!on && disposePanel) { disposePanel(); disposePanel = undefined }
+    };
+    unsub = host.subscribe(sync)
+    sync()
+    return () => { unsub?.(); if (disposePanel) disposePanel() }
+  }, 'dsh-mobile-composer: log-panel(settings)')
+
+  // 设置行：DebugLog 开关。
+  ctx.slots.inject('settings.general.item', () => ctx.slots.register({
+    name: 'settings.general.item',
+    id: 'mobile-composer-debuglog',
+    order: 0,
+    locale: NS,
+    inject: () => ({
+      debugLog: host.getSnapshot().value?.debugLog === true,
+      onToggle: (v: boolean) => { void host.set('debugLog', v) },
+    }),
+  }, DebugLogSetting))
 }
