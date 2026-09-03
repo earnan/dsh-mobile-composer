@@ -1,7 +1,9 @@
 /**
  * 「调试日志」设置行，注入 settings.general.item 槽位（设置界 General 分区）。
- * 原生 checkbox 实现开关，写入移动端 mobile-composer 命名空间的 debugLog 字段。
+ * 原生 checkbox 实现开关，写入 mobile-composer 命名空间的 debugLog 字段。
+ * 用本地 state 乐观更新：点击立即反馈，再异步写 settings。
  */
+import { useState, useEffect } from 'react'
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import type { NS } from './locales.ts'
 
@@ -22,6 +24,15 @@ export type DebugLogSettingProps =
  * @param props - 组合槽位 props。
  */
 export function DebugLogSetting({ debugLog, onToggle, t }: DebugLogSettingProps) {
+  const [checked, setChecked] = useState(debugLog)
+  // 外部设置值变化（如 settings 加载完成/别处修改）时同步本地。
+  useEffect(() => { setChecked(debugLog) }, [debugLog])
+
+  const handleChange = (value: boolean): void => {
+    setChecked(value)   // 乐观更新，点一下立即切换
+    onToggle(value)     // 异步写 settings
+  }
+
   return (
     <label
       data-mobile-composer="debuglog-row"
@@ -60,8 +71,8 @@ export function DebugLogSetting({ debugLog, onToggle, t }: DebugLogSettingProps)
       </span>
       <input
         type="checkbox"
-        checked={debugLog}
-        onChange={(e) => onToggle(e.target.checked)}
+        checked={checked}
+        onChange={(e) => handleChange(e.target.checked)}
         style={{ flex: 'none', width: '20px', height: '20px' }}
       />
     </label>
