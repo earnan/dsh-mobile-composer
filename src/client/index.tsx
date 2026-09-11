@@ -1,5 +1,4 @@
 import type { ClientContext } from '@deepseek-ai/dsh-client-runtime/client'
-import type { DraftAttachmentId, IConversation, ComposerAttachment } from '@deepseek-ai/dsh-client-ui-conversation/client'
 // 拉入 ctx.settingsScope / ctx.locale 的 type augmentation（side-effect type import）
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {} from '@deepseek-ai/dsh-client-locale/client'
@@ -21,14 +20,6 @@ declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
     mobileComposer: MobileRemoteKey
   }
-}
-
-/**
- * 运行时 conversation 服务：createDraftImages 未进 IConversation 公开接口，
- * 但运行时实例（ConversationController）存在该方法。类型在此补全。
- */
-interface ConversationRuntime extends IConversation {
-  createDraftImages(files: readonly File[]): readonly ComposerAttachment[]
 }
 
 /** sessions 服务最小面：按 id 取 session 作用域 ctx。 */
@@ -97,38 +88,17 @@ export function apply(ctx: ClientContext): void {
 
   // 用 ctx.inject 确保 conversation/sessions 服务就绪后再注册槽位，
   // 否则 apply 时 get('conversation') 可能返回 undefined。
+  // 注意：上传走 DSH 公开面 inputActions.addFiles（conversation.input.left 槽位由框架注入），
+  // 不再依赖会话服务的私有方法（createDraftImages 在 0.1.5 已移除）。
   ctx.inject(['conversation', 'sessions'], (scope: ClientContext) => {
-    const conversation = scope.get('conversation') as ConversationRuntime | undefined
+    const conversation = scope.get('conversation')
     log('info', 'apply: conversation =', conversation ? 'READY' : 'MISSING')
-    log('info', 'apply: createDraftImages =', conversation && typeof conversation.createDraftImages === 'function' ? 'READY' : 'MISSING')
 
     scope.slots.inject('conversation.input.left', () => scope.slots.register({
       name: 'conversation.input.left',
       id: 'mobile-composer-upload',
       order: 0,
       locale: NS,
-      inject: () => ({
-        createImages: (files: readonly File[]) => {
-          const conv = scope.get('conversation') as ConversationRuntime | undefined
-          log('info', 'createImages: conversation =', conv ? 'READY' : 'MISSING')
-          if (!conv) {
-            log('error', 'createImages: conversation 未找到')
-            return []
-          }
-          if (typeof conv.createDraftImages !== 'function') {
-            log('error', 'createImages: createDraftImages 不可用')
-            return []
-          }
-          try {
-            const result = conv.createDraftImages(files)
-            log('info', 'createImages: createDraftImages 返回', result.length, '个')
-            return result
-          } catch (e) {
-            log('error', 'createImages: createDraftImages 异常:', e)
-            return []
-          }
-        },
-      }),
     }, UploadButton))
 
     scope.slots.inject('conversation.input.right', () => scope.slots.register({

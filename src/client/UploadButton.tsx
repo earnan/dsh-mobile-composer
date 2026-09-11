@@ -1,26 +1,26 @@
 import { useRef, useCallback } from 'react'
 import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
-import type { DraftAttachmentId, ComposerAttachment } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import type { NS } from './locales.ts'
 import { log } from './log-bus.ts'
-
-/** 由 apply 注入：把浏览器 File 转成会话草稿图（conversation.createDraftImages）。 */
-export interface UploadInjected {
-  createImages: (files: readonly File[]) => readonly ComposerAttachment[]
-}
 
 export type UploadButtonProps =
   PropsRuntime<'conversation.input.left'>
   & PropsLocale<typeof NS>
-  & UploadInjected
 
 /**
  * 「上传图片」按钮，挂在 conversation.input.left 槽位（工具行「+」号旁）。
- * 复用公开面 inputActions.addImages 走图片入列流程，移动端与桌面端均可用。
+ * 复用 DSH 0.1.5 公开面 inputActions.addFiles 走「本地草稿 + 入列 + 发送时上传」全流程，
+ * 移动端与桌面端完全同源（桌面 InputBar 自身即用此 API）。
  *
- * 改进版本：解决移动端图片上传兼容性问题，使用浮动日志面板调试。
+ * 历史坑（2026-09 DSH 升 0.1.5-alpha.1）：
+ * 早期实现用 conversation.createDraftImages(files) + inputActions.addImages(ids)，
+ * 二者在本体 0.1.5 已被移除（createDraftImages→createDrafts、addImages→addFiles），
+ * 调用方拿到 undefined 直接静默失败，按钮「点了没反应」。改用 addFiles 后不再依赖任何
+ * 私有/非公开 API，版本再演进只要桌面 InputBar 还能传图，本按钮就同步可用。
+ *
+ * addFiles 返回值约定：成功返回 null，失败返回错误文案（如不支持的图片类型 / 会话不可用）。
  */
-export function UploadButton({ inputActions, createImages, t }: UploadButtonProps) {
+export function UploadButton({ inputActions, t }: UploadButtonProps) {
   const fileRef = useRef<HTMLInputElement | null>(null)
 
   const onPick = useCallback((): void => {
@@ -40,7 +40,7 @@ export function UploadButton({ inputActions, createImages, t }: UploadButtonProp
       log('info', '选择文件', files.length, '个')
       files.forEach((f, i) => log('info', '  文件[' + i + ']:', f.type, f.name, f.size + ' bytes'))
 
-      // 验证文件类型，确保是图片
+      // 仅保留图片类型（与按钮语义一致；addFiles 内部还会按 imageLimits 二次校验）
       const imageFiles = files.filter(f => f.type.startsWith('image/'))
       if (imageFiles.length === 0) {
         log('warn', '没有选择有效的图片文件')
@@ -49,15 +49,16 @@ export function UploadButton({ inputActions, createImages, t }: UploadButtonProp
 
       log('info', '有效图片文件', imageFiles.length, '个')
 
-      const images = createImages(imageFiles)
-      log('info', '创建图片', images.length, '个')
-      if (images.length > 0) {
-        const ids = images.map(image => image.id)
-        log('info', '添加图片ID', ids as unknown as string[])
-        inputActions.addImages(ids)
-        log('info', '图片已添加到输入框')
+      if (typeof inputActions.addFiles !== 'function') {
+        log('error', 'addFiles 不可用（inputActions 未注入到 conversation.input.left 槽位）')
+        return
+      }
+
+      const rejected = inputActions.addFiles(imageFiles)
+      if (rejected) {
+        log('error', '添加图片失败:', rejected)
       } else {
-        log('warn', 'createImages 返回空数组')
+        log('info', '图片已添加到输入框', imageFiles.length, '个')
       }
     } catch (error) {
       log('error', '图片上传失败:', error)
@@ -66,7 +67,7 @@ export function UploadButton({ inputActions, createImages, t }: UploadButtonProp
         fileRef.current.value = ''
       }
     }
-  }, [createImages, inputActions])
+  }, [inputActions])
 
   const onClick = useCallback((): void => {
     const input = fileRef.current
