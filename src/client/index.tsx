@@ -12,7 +12,6 @@
  * - 会话槽位、DOM 注入（attach/enter-newline/float-drag）与 0.1.6 版一致。
  */
 import { UploadButton } from './UploadButton.tsx'
-import { SteerButton } from './SteerButton.tsx'
 import { DebugLogSetting } from './DebugLogSetting.tsx'
 import { installEnterNewline } from './enter-newline.ts'
 import { installFloatDrag } from './float-drag.ts'
@@ -189,11 +188,18 @@ function installMobileQueueDefault(ctx: ClientCtx): () => void {
 /**
  * dsh-mobile-composer，浏览器半：移动端增强 + 设置开关。
  * - 传图按钮（conversation.input.left）
- * - 插话发送按钮（conversation.input.right）
  * - 回车=换行（document 捕获拦截）
  * - 退出按钮拖动（DOM 注入）
  * - 「调试日志」设置开关（settings.general.item；rc.2：Config schema 派生设置页）
  * @param ctx - 客户端根上下文。
+ *
+ * ⚠️ 已退役：插话发送按钮（conversation.input.right）。rc.2 的 `conversation.input.right`
+ * 是 `scope:'session'` 但**不携带 `owner: InputZone`**（对比 `conversation.input.dock`），
+ * 故不再注入 `{session, input}` 对象；同时公开面 `InputActions` 的 `submit()` 硬编码
+ * `'queue'`，`'steer'` 只存在于宿主内部回车手势策略（`resolveSubmitMode`）——第三方插件
+ * 无法触达。二者叠加使该按钮（无论旧写法还是改钩子写法）都无法成立：旧写法读
+ * `undefined.running` 崩溃并让整个槽位落入 crash face。故整块移除，不做语义替身。
+ * 详见知识库 `dsh/rc2-slot-owner-contract-input-zone.md`。
  */
 export function apply(ctx: ClientCtx): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'dsh-mobile-composer: dictionaries')
@@ -210,11 +216,6 @@ export function apply(ctx: ClientCtx): void {
   // 否则 apply 时 get('conversation') 可能返回 undefined。
   // 0.1.6 起的适配不变：上传走官方隐藏 <input type="file"> 的 intake 管线。
   ctx.inject(['conversation', 'sessions'], (scope: ClientCtx) => {
-    const conversation = scope.get('conversation') as
-      | { input: { for(ctx: ClientCtx): { submit(mode: string): Promise<void> } } }
-      | undefined
-    log('info', 'apply: conversation =', conversation ? 'READY' : 'MISSING')
-
     // 上传槽位不需要 inject：UploadButton 直接把选中的图片交给官方隐藏
     // <input type="file">，复用官方 intake 管线。
     scope.slots.inject('conversation.input.left', () => scope.slots.register({
@@ -223,30 +224,6 @@ export function apply(ctx: ClientCtx): void {
       order: 0,
       locale: NS,
     }, UploadButton))
-
-    scope.slots.inject('conversation.input.right', () => scope.slots.register({
-      name: 'conversation.input.right',
-      id: 'mobile-composer-steer',
-      order: 0,
-      locale: NS,
-      inject: (sessionId: string) => ({
-        steer: () => {
-          // ⚠️ session 槽位的 inject 工厂收到的是 **SessionId 字符串**，不是 Context
-          // （SlotCore 的 InjectParams：ScopeOf<K> extends 'session' ? [sessionId] : ...）。
-          // 而 `input.for` 需要 session 作用域的 Context，故先用 sessions.scope(id) 换。
-          const conv = scope.get('conversation') as typeof conversation
-          const sessions = scope.get('sessions') as
-            | { scope(id: string): ClientCtx | undefined }
-            | undefined
-          const actx = sessions?.scope(sessionId)
-          if (actx === undefined) {
-            log('warn', 'steer: 无法解析 session 作用域', sessionId)
-            return
-          }
-          void conv?.input.for(actx).submit('steer')
-        },
-      }),
-    }, SteerButton))
   })
 
   ctx.effect(() => installAttachButton(), 'dsh-mobile-composer: attach-button(0.1.6)')
