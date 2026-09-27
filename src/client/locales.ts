@@ -5,6 +5,7 @@ export const NS = 'mobileComposer'
 /** 简体中文词典（key 集合的唯一事实源）。 */
 export const zh = {
   upload: '上传图片',
+  attach: '添加附件',
   steer: '插话发送',
   debugLog: '调试日志',
   debugLogDesc: '在右下角显示浮动调试日志面板（排查上传/API 问题用）',
@@ -13,6 +14,7 @@ export const zh = {
 /** 英文词典，key 与中文一致。 */
 export const en: Record<MobileRemoteKey, string> = {
   upload: 'Upload image',
+  attach: 'Attach files',
   steer: 'Steer send',
   debugLog: 'Debug log',
   debugLogDesc: 'Show a floating debug log panel (for troubleshooting uploads/API)',

@@ -1,4 +1,4 @@
-import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type { PropsLocale, PropsRuntime } from './props.ts'
 import type { NS } from './locales.ts'
 
 /** 由 apply 注入：把当前草稿以 steer（插话）模式提交进运行中的回合。 */

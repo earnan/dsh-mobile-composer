@@ -4,7 +4,7 @@
  * 用本地 state 乐观更新：点击立即反馈，再异步写 settings。
  */
 import { useState, useEffect } from 'react'
-import type { PropsLocale, PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
+import type { PropsLocale, PropsRuntime } from './props.ts'
 import type { NS } from './locales.ts'
 
 /** 由 apply 注入：当前值 + 写回。 */

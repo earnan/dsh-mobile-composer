@@ -6,23 +6,59 @@ DSH（DeepSeek Harness）移动端 UI 增强插件：让手机通过公网/局�
 
 ## 功能
 
-| 功能 | 实现方式 |
-|------|---------|
-| 「+」号上传图片 | `conversation.input.left` 槽位注入回形针按钮，走 `inputActions.addImages` |
-| 运行中插话发送 | `conversation.input.right` 槽位注入按钮，走 `conversation.input.for(ctx).submit('steer')` |
-| 回车=换行 | document 捕获阶段拦截 keydown，窄屏下 Enter 只换行 |
-| 退出按钮拖动 | DOM 注入 pointer 拖拽 + localStorage 位置记忆 |
-| 浮动调试日志 | DOM 注入悬浮面板（log-bus + log-panel），**设置开关控制**（设置·General），`?debug=1` 兜底 |
+| 功能 | 生效范围 | 实现方式 |
+|------|---------|---------|
+| **上传图片按钮** | ≤1023px | `conversation.input.left` 槽位按钮（图片图标）。自带 `accept` 白名单的 picker，选中后用 `DataTransfer` 回填给官方隐藏 `<input type=file>`，**复用官方 intake 管线** |
+| **回形针附件按钮** | 全宽度 | 0.1.6 官方删掉了工具栏里的回形针（改到「+」菜单），本插件按**幂等判据**补一个，点击转发到同一个官方 input；0.1.5 官方按钮在位时自动撤除，不重复 |
+| **插话发送按钮** | ≤1023px | `conversation.input.right` 槽位按钮，`conversation.input.for(actx).submit('steer')`；仅在运行中显示 |
+| **回车=换行** | ≤1023px | 捕获阶段拦截裸 Enter，**翻译成 `Shift+Enter`** 交给 Lexical 官方换行分支（手机没有 Shift 键） |
+| **发送语义三分** | ≤1023px | Enter=换行 / 官方主按钮=**排队发送**（窄屏把 `ui-conversation.busyEnter` 规范为 `queue`，离开窄屏还原用户值）/ 插话按钮=插话 |
+| **退出按钮拖动** | ≤1023px | DOM 注入 pointer 拖拽 + localStorage 位置记忆 |
+| **隐藏牛马看板徽标** | ≤1023px | CSS 隐藏 `dsh-worktime-board` 的 `.wtb-badge`（它 `position:fixed; bottom/right:16px; z-index:2147483000`，压在发送/插话按钮上） |
+| 浮动调试日志 | 全端（默认关） | DOM 注入悬浮面板（log-bus + log-panel），**设置开关控制**（设置·General），`?debug=1` 兜底 |
 
-前四项均在 ≤1023px（移动端）生效，桌面端行为不变；浮动调试日志全端生效、**默认关闭**——在 设置·General 开启「调试日志」开关即可，或访问 `?debug=1` 兜底唤出。
+上表除注明「全宽度 / 全端」者外均是**移动端专属**（≤1023px，由 `matchMedia` 与 CSS 媒体查询双重判定），桌面端行为不变。
+
+> ⚠️ 桌面全宽窗口下看不到上传/插话按钮、Enter 也仍是发送 —— 测移动端行为请把窗口拖窄到 <1024px 或用设备模拟。
+
 
 ## 架构依据
 
 DSH 官方暴露了三层可扩展面，本插件全部使用公开 API：
 
 1. **槽位系统**：`ctx.slots.inject(slotName, factory)`，输入区有 `conversation.input.left`（工具行左）、`conversation.input.right`（发送按钮左）等 list 槽位。
-2. **conversation 服务**：`ctx.conversation`（`IConversation`）公开 `input`（`SessionInputResolver`），其 `for(actx).submit('steer')` 即插话发送；`createDraftImages` 把 File 转成草稿图 id。
-3. **session 标准 kit**：每个 session 槽位组件自动获得 `useInput` + `inputActions`（含 `addImages`）。
+2. **conversation 服务**：`ctx.conversation`（`IConversation`）公开 `input`（`SessionInputResolver`），其 `for(actx).submit('steer')` 即插话发送；`createDrafts(sessionId, files)` 把 File 转成草稿附件。
+3. **官方隐藏 file input**：composer 工具行里始终有一个 `<input type="file">`（0.1.5/0.1.6 都在），其 `onPickFiles → intakeFiles → addFiles` 是**附件入库的唯一权威管线**。本插件把选中的文件交给它，而不是自己重做一遍。
+
+### 两个必须记住的契约（都栽过）
+
+**① session 槽位的 `inject` 工厂收到的是 `SessionId` 字符串，不是 Context。**
+
+```ts
+// ui-slots 的 InjectParams
+ScopeOf<K> extends 'session' ? [sessionId: SessionIdOf] : ...
+```
+
+把它当 Context 传给 `sessions.scopeOf(actx)` / `conversation.input.for(actx)` 会**静默失效**
+（不抛错、无日志），症状是「按钮点了没反应」。需要 Context 时用 `sessions.scope(sessionId)` 换。
+
+**② `InputActions` 里没有 `addFiles`。**
+
+`addFiles` 只存在于 `ComposerBarInjected`（仅 `conversation.composer.bar` 槽位拿得到）。
+历史遗留代码里的 `inputActions.addFiles(...)` 从未生效过。`InputActions` 实际成员：
+`setDraft` / `addAttachments` / `removeAttachment` / `pruneAttachments` / `submit`。
+
+### 为什么复用官方 input 而不是自己调服务面
+
+官方 `intakeFiles` 内含图片限额校验、类型拒绝分支、上传队列与 toast 提示。
+自建一份必然逐渐漂移；而「把文件交给官方 input」只依赖一个被两个大版本反复证实的事实。
+
+### 焦点契约
+
+官方给 composer 里**每一个**工具按钮都挂了 `keepFocus`（mousedown `preventDefault` +
+重聚焦编辑器），注释原文是「Button presses steal focus from the editor」。
+插件注入的按钮必须照做 —— 否则移动端输入法会在 contenteditable 失焦时
+**丢弃尚未提交的组合文本**，表现为「打好的问题不见了、只剩图片」。
 
 回车换行与退出拖动参考了 `@dsh-external/dsh-mobile-nav` 的 DOM 级覆盖范式（捕获阶段事件拦截 + MutationObserver）。
 
@@ -81,25 +117,40 @@ npm run build      # esbuild 打包 src/client → lib/client.js
 
 ```
 src/
-├── index.ts            # 主机侧空 apply（纯客户端插件）
+├── index.ts             # 主机侧空 apply（纯客户端插件）
 └── client/
-    ├── index.tsx       # apply + slot 注入 + 样式
-    ├── locales.ts      # 文案
-    ├── UploadButton.tsx# 传图按钮
-    ├── SteerButton.tsx # 插话发送按钮
-    ├── enter-newline.ts# 回车换行
-    ├── float-drag.ts   # 退出按钮拖动
-    ├── log-bus.ts      # 日志事件总线
-    └── log-panel.ts    # 浮动日志面板
+    ├── index.tsx        # apply + slot 注入 + 移动端发送语义 + 样式
+    ├── locales.ts       # 文案
+    ├── UploadButton.tsx # 上传图片按钮（交文件给官方 input）
+    ├── attach-button.ts # 回形针注入（补 0.1.6 删掉的官方附件入口）
+    ├── SteerButton.tsx  # 插话发送按钮
+    ├── enter-newline.ts # 回车换行（Enter → Shift+Enter 翻译）
+    ├── float-drag.ts    # 退出按钮拖动
+    ├── log-bus.ts       # 日志事件总线
+    └── log-panel.ts     # 浮动日志面板
 ```
 
 ## ⚠️ 升级兼容性注意
 
-DSH（harness）是 monorepo，`@deepseek-ai/*` 包由本地源码构建，**每次升级 API 可能变化**。本插件依赖的 `conversation.createDraftImages`、`ctx.inject` 服务注入等契约，一旦 DSH 升级后发生漂移，可能导致功能静默失效（图片选了 0 张无报错）。
+DSH（harness）是 monorepo，`@deepseek-ai/*` 包由本地源码构建，**每次升级 API 可能变化**。
+本插件最怕的不是编译报错，而是**静默漂移**——功能坏掉后没人再点那个按钮，Bug 就长期潜伏
+（本插件的上传按钮就这样失效过多个版本）。
 
-升级 DSH 后**必须**重新验证：
-1. `createDraftImages` 是否仍存在且返回 `ComposerAttachment[]`；
-2. `conversation` 服务经 `ctx.inject` 获取是否 READY（用浮动日志面板看 apply 日志——设置·General 开启「调试日志」或访问 `?debug=1`）；
-3. `inputActions.addImages` 签名是否仍兼容。
+升级 DSH 后**必须**逐项重新验证：
 
-排查时在 设置·General 开启「调试日志」，或在 URL 加 `?debug=1` 兜底唤出右下角浮动日志面板，能直接看到 `createImages` 每一步的状态，定位是服务未就绪、API 变化还是文件类型问题。调试完关掉开关即恢复常规界面。
+| # | 契约 | 验证点 |
+|---|---|---|
+| 1 | 官方隐藏 file input | composer 工具行里仍有 `<input type="file">`（附件入口的地基） |
+| 2 | slot `inject` 参数 | 仍是 `sessionId` 字符串；`sessions.scope(id)` 仍能换出 Context |
+| 3 | `InputActions` 成员 | 仍无 `addFiles`；`addAttachments` 签名不变 |
+| 4 | composer 编辑面 | 仍是 Lexical contenteditable（不是 textarea），Enter 语义不变 |
+| 5 | 工具按钮焦点契约 | 官方仍用 `keepFocus`（若官方改了，我们要跟着改） |
+| 6 | `busyEnter` 设置 | 命名空间 `ui-conversation` + 字段 `busyEnter`（`queue`/`steer`）不变 |
+| 7 | `conversation` 服务 | 经 `ctx.inject` 获取为 READY（浮动日志看 apply 日志） |
+
+**排查入口**：设置·General 开启「调试日志」，或 URL 加 `?debug=1`，右下角浮动面板会打出
+每一步的状态（`[enter-newline]` 分支判定、`[图片] 已交给官方附件管线 N 个`、
+`steer: 无法解析 session 作用域` 等），据此区分「服务未就绪」「API 漂移」还是「结构变更」。
+调试完关掉开关即恢复常规界面。
+
+> 桌面全宽窗口测不出移动端问题（媒体查询不命中）。测之前先确认视口 <1024px。
